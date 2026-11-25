@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime
+from pathlib import Path
 
 import mongomock
 from pymongo.errors import DuplicateKeyError
@@ -10,6 +11,7 @@ from subrutinas import (
     insertar_observador, modificar_observador, borrar_observador,
     listar_observadores, consultar_avistamientos, consultar_rango_fechas,
     consultar_reporte_completo,
+    clasificar_tipo_zona, leer_datos_iniciales, cargar_datos_iniciales,
 )
 
 
@@ -40,6 +42,28 @@ class PruebasBaseDatos(unittest.TestCase):
         preparar_base(self.db)
         self.assertEqual(len(self.db.list_collection_names()), 4)
         self.assertEqual(self.db.ubicaciones.count_documents({}), 1)
+
+    def test_csv_real_y_carga_inicial(self):
+        carpeta = Path(__file__).resolve().parents[1] / 'data'
+        ubicaciones, categorias, observadores, reportes = leer_datos_iniciales(carpeta)
+        self.assertEqual(len(ubicaciones), 7116)
+        self.assertEqual(len({u['_id'] for u in ubicaciones}), 7116)
+        self.assertTrue(all(u['poblado'] for u in ubicaciones))
+        self.assertEqual(ubicaciones[0]['idubi'], ubicaciones[1]['idubi'])
+        self.assertEqual((len(categorias), len(observadores), len(reportes)), (4, 3, 4))
+        db = self.conex.carga_inicial
+        resumen = cargar_datos_iniciales(db, carpeta)
+        self.assertEqual(resumen['ubicaciones'], 7116)
+        self.assertEqual(resumen['avistamientos'], 4)
+        with self.assertRaises(ValueError):
+            cargar_datos_iniciales(db, carpeta)
+        self.assertEqual(db.avistamientos.count_documents({}), 4)
+
+    def test_prioridad_insular_y_zonas(self):
+        self.assertEqual(clasificar_tipo_zona('Puntarenas', 'Puntarenas', 'Isla Chira'), 'Insular')
+        self.assertEqual(clasificar_tipo_zona('Puntarenas', 'Osa', 'Otro'), 'Costera')
+        self.assertEqual(clasificar_tipo_zona('San José', 'Dota', 'Otro'), 'Montañosa')
+        self.assertEqual(clasificar_tipo_zona('San José', 'San José', 'Amón'), 'Urbana')
 
     def test_crud_catalogos(self):
         self.assertEqual(insertar_categoria(self.db, 2, 'Luz', 'Luz inmóvil'), 2)

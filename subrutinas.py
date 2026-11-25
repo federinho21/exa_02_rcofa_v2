@@ -1,12 +1,99 @@
 """Acceso a MongoDB de RCOFA. Las funciones reciben la base de datos abierta."""
 
+import csv
+import json
 import re
+import unicodedata
 from datetime import datetime
 
 import pymongo
 
 
 COLECCIONES = ('ubicaciones', 'categorias_fenomeno', 'observadores', 'avistamientos')
+
+CANTONES_COSTEROS = {
+    'Puntarenas', 'Esparza', 'Montes de Oro', 'Osa', 'Quepos', 'Golfito',
+    'Parrita', 'Corredores', 'Garabito', 'Liberia', 'Nicoya', 'Santa Cruz',
+    'Bagaces', 'Carrillo', 'Cañas', 'Abangares', 'Nandayure', 'La Cruz',
+    'Hojancha', 'Limón', 'Pococí', 'Siquirres', 'Talamanca', 'Matina', 'Guácimo',
+}
+CANTONES_MONTANOSOS = {
+    'Tarrazú', 'Aserrí', 'Mora', 'Acosta', 'Turrubares', 'Dota', 'Pérez Zeledón',
+    'León Cortés', 'Puriscal', 'San Ramón', 'Zarcero', 'Poás', 'Valverde Vega',
+    'Paraíso', 'Jiménez', 'Turrialba', 'Alvarado', 'Oreamuno', 'El Guarco',
+    'Barva', 'Santa Bárbara', 'San Rafael', 'San Isidro', 'Tilarán',
+    'Buenos Aires', 'Coto Brus',
+}
+POBLADOS_INSULARES = {
+    'Isla del Coco', 'Isla Chira', 'Isla Venado', 'Isla Caballo', 'Isla San Lucas',
+    'Isla Tortuga', 'Isla Cedros', 'Isla Jesucita', 'Isla Berrugate',
+}
+
+
+def normalizar_nombre(texto):
+    texto = unicodedata.normalize('NFD', texto.strip().casefold())
+    return ''.join(letra for letra in texto if not unicodedata.combining(letra))
+
+
+def clasificar_tipo_zona(provincia, canton, poblado):
+    # La clasificación insular tiene prioridad sobre el cantón costero.
+    if normalizar_nombre(poblado) in {normalizar_nombre(p) for p in POBLADOS_INSULARES}:
+        return 'Insular'
+    if normalizar_nombre(canton) in {normalizar_nombre(c) for c in CANTONES_COSTEROS}:
+        return 'Costera'
+    if normalizar_nombre(canton) in {normalizar_nombre(c) for c in CANTONES_MONTANOSOS}:
+        return 'Montañosa'
+    return 'Urbana'
+
+
+def leer_ubicaciones(ruta):
+    documentos = []
+    with open(ruta, encoding='utf-8-sig', newline='') as archivo:
+        lector = csv.DictReader(archivo, delimiter=';')
+        if lector.fieldnames != ['Id', 'Provincia', 'Cantón', 'Distrito', 'Poblado']:
+            raise ValueError('Encabezado de ubicaciones.csv no reconocido')
+        for numero, fila in enumerate(lector, start=1):
+            documento = {'_id': str(numero).zfill(5), 'idubi': fila['Id'].strip(),
+                         'provincia': fila['Provincia'].strip(),
+                         'canton': fila['Cantón'].strip(),
+                         'distrito': fila['Distrito'].strip(),
+                         # Dos filas no tienen poblado: conservar el distrito como referencia.
+                         'poblado': fila['Poblado'].strip() or fila['Distrito'].strip()}
+            for campo, valor in documento.items():
+                validar_texto(valor, campo)
+            documento['tipo_zona'] = clasificar_tipo_zona(
+                documento['provincia'], documento['canton'], documento['poblado'])
+            documentos.append(documento)
+    if not documentos:
+        raise ValueError('El CSV no contiene ubicaciones')
+    return documentos
+
+
+def leer_datos_iniciales(carpeta):
+    """Carga archivos locales; los cuatro reportes son ejemplos, no datos reales."""
+    ubicaciones = leer_ubicaciones(carpeta / 'ubicaciones.csv')
+    with open(carpeta / 'catalogos.json', encoding='utf-8') as archivo:
+        catalogos = json.load(archivo)
+    with open(carpeta / 'avistamientos_ejemplo.json', encoding='utf-8') as archivo:
+        avistamientos = json.load(archivo)
+    por_id = {ubicacion['_id']: ubicacion for ubicacion in ubicaciones}
+    for reporte in avistamientos:
+        ubicacion = por_id[reporte.pop('id_sector')]
+        reporte['ubicacion'] = {
+            'id_sector': ubicacion['_id'], 'provincia': ubicacion['provincia'],
+            'canton': ubicacion['canton'], 'distrito': ubicacion['distrito'],
+            'localidad': ubicacion['poblado'],
+        }
+    return ubicaciones, catalogos['categorias_fenomeno'], catalogos['observadores'], avistamientos
+
+
+def cargar_datos_iniciales(db, carpeta):
+    datos = leer_datos_iniciales(carpeta)
+    # Comprobar antes de insertar: repetir el comando no duplica ni borra datos.
+    if any(db[nombre].find_one({}, {'_id': 1}) is not None for nombre in COLECCIONES):
+        raise ValueError('La base ya contiene datos. La carga inicial requiere una base vacía; '
+                         'usá --base rcofa_pruebas para probar en otra base.')
+    return cargar_datos(db, *datos)
 
 
 def conectar(usuario='mongoDB', clave='mongo2008', host='127.0.0.1:27017'):
