@@ -1,4 +1,7 @@
-if __name__ == '__main__':
-    from subrutinas import ejecutar_consultas, menu_principal
+"""Menú principal de RCOFA."""
 
-    menu_principal({'consultar': ejecutar_consultas}, leer=input)
+from subrutinas import ejecutar_cli
+
+
+if __name__ == '__main__':
+    ejecutar_cli(__doc__)

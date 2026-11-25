@@ -1,102 +1,89 @@
-# RCOFA — módulo de MongoDB (Ihann)
+# RCOFA — Registro de avistamientos
 
-## Ejecutar
+## Instalación y ejecución
 
-Con MongoDB local iniciado en `127.0.0.1:27017`, instalar `pip install -r requirements.txt`
-y ejecutar `python carga_datos.py`. Esto crea las cuatro colecciones vacías en `rcofa`.
-La conexión usa el usuario de clase `mongoDB`, contraseña `mongo2008`, autenticado
-en `admin`. Ese usuario debe existir en el servidor; el programa no lo crea.
-Las credenciales son las del entorno local de práctica.
-
-## Contrato para el equipo
-
-| Colección | Campos requeridos |
-| --- | --- |
-| `ubicaciones` | `_id` string, `provincia`, `canton`, `distrito`, `poblado`, `tipo_zona` |
-| `categorias_fenomeno` | `_id` int, `nombre` string, `descripcion` string |
-| `observadores` | `_id` int, `alias_o_estacion` string, `rol` string, `indice_confiabilidad` float entre 0 y 1 |
-| `avistamientos` | `_id` string `REP-00000001`, `fecha_evento`, `duracion_seg` int no negativo, `id_categoria` int, `id_observador` int, `ubicacion` documento |
-
-**Jefferson:** entregar listas de diccionarios de ubicaciones, categorías y observadores.
-El `_id` de ubicación es el código del CSV convertido a string, conservando ceros
-iniciales. Clasificar `tipo_zona` como `Insular`, `Costera`, `Montañosa` o `Urbana`.
-Se conserva `poblado` como en class_06. La lectura del CSV y clasificación corresponden a su módulo.
-
-**Kener:** entregar una lista de 10.000 avistamientos con códigos únicos. En cada
-`ubicacion` incluir `id_sector` (igual a `ubicaciones._id`), `provincia`, `canton`,
-`distrito` y `localidad` (copiar `poblado`). Usar IDs de categorías y observadores
-existentes. `fecha_evento` puede ser un `datetime` o texto `YYYY-MM-DD HH:MM:SS`;
-usar fechas sin zona horaria y el mismo criterio en todo el equipo.
-La carga convierte texto con `datetime.strptime`. Los campos opcionales, como
-`telemetria_entorno`, radar o testimonio, se conservan sin exigirlos a todos los reportes.
-La generación corresponde a su módulo.
-
-El enunciado usa tanto `_id` como `codigo_reporte`: guardamos ambos con el mismo
-código. El generador puede entregar solo `_id`; la carga añade `codigo_reporte`.
-
-**Fede:** abrir una conexión al iniciar y cerrarla al terminar. Las funciones no
-imprimen ni piden entradas; retornan datos para el menú. El formato de fechas en
-español y el filtro Python `duracion_seg > 200` corresponden a su módulo.
-
-```python
-from subrutinas import conectar, preparar_base, cargar_datos
-
-conex = conectar()
-try:
-    db = conex.rcofa
-    preparar_base(db)
-    # Cuando estén disponibles las cuatro listas del equipo:
-    # resumen = cargar_datos(db, ubicaciones, categorias, observadores, avistamientos)
-finally:
-    conex.close()
-```
-
-## Funciones en subrutinas.py
-
-Todas reciben `db` como primer argumento, excepto `conectar` y los validadores.
-
-- `cargar_ubicaciones(db, ubicaciones)`, `cargar_categorias(db, categorias)`,
-  `cargar_observadores(db, observadores)`, `cargar_avistamientos(db, avistamientos)`:
-  retornan listas de IDs insertados. Cargar en ese orden.
-- `cargar_datos(db, ubicaciones, categorias, observadores, avistamientos)`:
-  ejecuta las cuatro cargas y retorna cantidades por colección.
-- `insertar_categoria(db, id_categoria, nombre, descripcion)`.
-- `modificar_categoria(db, id_categoria, nombre, descripcion)`.
-- `borrar_categoria(db, id_categoria)` y `listar_categorias(db)`.
-- `insertar_observador(db, id_observador, alias_o_estacion, rol, indice_confiabilidad)`.
-- `modificar_observador(db, id_observador, alias_o_estacion, rol, indice_confiabilidad)`.
-- `borrar_observador(db, id_observador)` y `listar_observadores(db)`.
-- `consultar_avistamientos(db, provincia=None, canton=None, id_categoria=None)`:
-  combina los filtros enviados con AND y `$eq`; retorna solo código, fecha,
-  duración y localidad. Orden: duración descendente y fecha ascendente.
-- `consultar_rango_fechas(db, fecha_inicio, fecha_fin)`: incluye ambos extremos,
-  devuelve todas las coincidencias sin límite y ordena por fecha.
-- `consultar_reporte_completo(db)`: cruza los dos catálogos con `$lookup`;
-  retorna código, fecha, duración, localidad, nombre_fenomeno y alias_observador.
-
-Inserciones individuales retornan el ID. Modificaciones retornan `UpdateResult`:
-usar `matched_count` para saber si existía y `modified_count` para saber si cambió.
-Borrados retornan `DeleteResult` con `deleted_count`. No se permite borrar un
-catálogo referenciado por reportes. Este control supone ejecución desde una sola
-consola; no es una transacción frente a escrituras concurrentes.
-
-Las excepciones se propagan para que el menú pueda informar el error. Campos
-faltantes producen `KeyError`, valores inválidos `ValueError`, y errores de MongoDB
-son `pymongo.errors.PyMongoError`. Los IDs duplicados no se sobrescriben.
-Las cargas usan inserciones ordenadas y no son transacciones: un duplicado o fallo
-del servidor puede dejar registros previos insertados. No repetir la carga completa
-sobre una base poblada; revisar el error y usar una base de prueba para ensayos.
-
-## Comprobaciones
-
-`python carga_datos.py` verifica conexión y creación de colecciones.
-`python consultas_fenomenos.py` y la opción 4 de `python main.py` abren el mismo menú de consultas sobre los datos ya cargados.
-Las pruebas automáticas requieren `mongomock` y se ejecutan con:
+Para usar la aplicación necesitás Python 3.9 o posterior y un servidor MongoDB
+accesible. En un entorno de práctica, instalá las dependencias con:
 
 ```text
-pip install mongomock
+python -m venv .venv
+```
+
+Activá el entorno (`.venv\Scripts\Activate.ps1` en PowerShell o
+`source .venv/bin/activate` en bash) y ejecutá:
+
+```text
+python -m pip install -r requirements.txt
+python carga_datos.py --base rcofa_pruebas
+python main.py --base rcofa_pruebas
+```
+
+Los tres puntos de entrada (`main.py`, `carga_datos.py` y
+`consultas_fenomenos.py`) usan `MONGO_URI` si está definida. Por defecto
+conectan a `mongodb://127.0.0.1:27017` sin credenciales. Si tu servidor requiere
+autenticación, configurá la URI en el entorno sin guardarla en el repositorio.
+Para elegir la base se usa `--base`, luego `MONGO_DB_NAME` y por último `rcofa`.
+Usá la misma base al cargar y al consultar.
+
+También podés cargar desde la opción 1 del menú principal o abrir solo el menú
+de consultas con `python consultas_fenomenos.py --base rcofa_pruebas`. El menú
+principal abre la conexión al elegir una operación que la requiere y la cierra
+al salir o interrumpir la ejecución.
+
+## Carga inicial: no borra ni sobrescribe
+
+Resultado esperado: **7.116 ubicaciones**, **5 categorías**, **10 observadores**
+y **10.000 avistamientos sintéticos**. El CSV del equipo está en
+`data/ubicaciones.csv`; los dos catálogos se definen únicamente en `catalogos.py`.
+No se usan reportes de ejemplo como fuente.
+
+- El `idubi` conserva el código original, incluidos ceros iniciales; no es
+  único. El `_id` de ubicación combina una huella SHA-256 de los cinco campos
+  originales y un número de ocurrencia. Se conserva cada copia de una fila
+  idéntica: no se puede distinguir cuál copia física es cuál, pero el conjunto
+  de IDs no cambia al reordenar las filas. Los nombres se muestran sin espacios
+  en los bordes.
+- Los dos poblados vacíos se conservan como texto vacío en el catálogo. Para
+  esos sectores, el reporte muestra el distrito como localidad. La clasificación
+  da prioridad a poblado insular, cantón costero, cantón montañoso y, por último,
+  zona urbana. La zona insular se limita a los nueve poblados del enunciado:
+  que el nombre contenga «Isla» no basta.
+- Cada reporte guarda `_id` y `codigo_reporte` iguales (`REP-00000001` a
+  `REP-00010000`), categoría y observador existentes y `ubicacion.id_sector`
+  igual al `_id` de su ubicación. La fecha se guarda como BSON datetime sin
+  zona horaria explícita; si se recibe texto `YYYY-MM-DD HH:MM:SS`, se convierte
+  con `datetime.strptime`. Los campos opcionales varían entre reportes y
+  algunos reportes no tienen ninguno.
+
+La carga inicial rechaza bases que ya contienen documentos y valida todos los
+datos antes de escribir. No elimina registros. Las inserciones **no son una
+transacción**: si falla MongoDB durante la carga, puede quedar una carga
+parcial. Revisá esa base y, para reintentar, elegí otra vacía; no corras dos
+cargas simultáneas en la misma base.
+
+## Consultas y catálogos
+
+El menú permite listar, crear, modificar y borrar categorías y observadores.
+El borrado individual requiere confirmación y se bloquea si un avistamiento
+referencia el registro.
+
+Las cuatro consultas son: filtro por provincia, cantón o categoría;
+rango de fechas inclusivo; reporte cruzado que muestra el fenómeno y el
+observador; y filtro en Python por duración estrictamente mayor a 200 segundos.
+
+## Pruebas
+
+```text
+python -m pip install mongomock
 python -m unittest discover -s tests -v
 ```
 
-Estas pruebas usan una base simulada; también debe comprobarse la carga con el CSV
-real y los 10.000 reportes contra MongoDB local antes de integrar.
+Las pruebas usan bases simuladas, no requieren conectarse a MongoDB.
+
+## Antes de publicar
+
+Confirmá que el equipo tiene permiso para redistribuir `data/ubicaciones.csv`.
+Las versiones anteriores incluyeron credenciales: antes de hacer público el
+repositorio, tratá esas credenciales como expuestas (revocá o rotá las que
+sigan vigentes) y resolvé su exposición en el historial con los responsables.
+Que no aparezcan en el código actual no elimina su presencia histórica.

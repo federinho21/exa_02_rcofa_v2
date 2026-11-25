@@ -1,9 +1,9 @@
 import runpy
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from io import StringIO
-from unittest.mock import Mock, call, patch
+from unittest.mock import MagicMock, Mock, call, patch
 
 import mongomock
 from pymongo.errors import ConnectionFailure
@@ -94,23 +94,76 @@ class ConsultasMenuTest(unittest.TestCase):
 
 
 class ConsultasEntrypointsTest(unittest.TestCase):
-    def ejecutar(self, modulo, entradas):
+    def ejecutar(self, modulo, entradas, argumentos=()):
         salida = StringIO()
-        with patch('builtins.input', side_effect=entradas), redirect_stdout(salida):
+        with patch('sys.argv', [modulo, *argumentos]), patch(
+            'builtins.input', side_effect=entradas
+        ), redirect_stdout(salida):
             runpy.run_module(modulo, run_name='__main__')
         return salida.getvalue()
 
-    def test_main_no_conecta_si_no_se_elige_consultas(self):
+    def test_main_no_conecta_al_navegar_sin_operar(self):
         with patch.object(subrutinas, 'conectar') as conectar:
-            self.ejecutar('main', ['1', '0'])
+            self.ejecutar('main', ['2', '0', '3', '0', '0'])
         conectar.assert_not_called()
 
+    def test_main_usa_base_elegida_y_comparte_conexion_para_crud_y_consultas(self):
+        cliente = mongomock.MongoClient()
+        with patch.dict('os.environ', {'MONGO_DB_NAME': 'base_del_entorno'}), patch.object(
+            subrutinas, 'conectar', return_value=cliente
+        ) as conectar, patch.object(cliente, 'close', wraps=cliente.close) as cerrar:
+            salida = self.ejecutar('main', [
+                '2', '2', '17', 'Luz', 'Descripción', '2', '17', 'Otra', 'Descripción',
+                '1', '0', '4', '3', '0', '0',
+            ], ['--base', 'aislada'])
+        self.assertIn('Ya existe', salida)
+        self.assertIn('Luz', salida)
+        self.assertEqual(cliente.aislada.categorias_fenomeno.find_one(17)['nombre'], 'Luz')
+        self.assertEqual(cliente.list_database_names(), ['aislada'])
+        conectar.assert_called_once_with()
+        cerrar.assert_called_once_with()
+
+    def test_carga_y_consulta_comparten_base_del_entorno(self):
+        cliente = mongomock.MongoClient()
+
+        def cargar(db, carpeta):
+            db.avistamientos.insert_one({'codigo_reporte': 'CARGADO', 'duracion_seg': 201})
+            return {'avistamientos': 1}
+
+        with patch.dict('os.environ', {'MONGO_DB_NAME': 'base_del_entorno'}), patch.object(
+            subrutinas, 'conectar', return_value=cliente
+        ), patch.object(subrutinas, 'cargar_datos_iniciales', side_effect=cargar):
+            carga = self.ejecutar('carga_datos', [])
+            consulta = self.ejecutar('consultas_fenomenos', ['3', '0'])
+        self.assertIn('Base de datos: base_del_entorno', carga)
+        self.assertIn('CARGADO | 201 s', consulta)
+
+    def test_ctrl_c_en_carga_directa_avisa_carga_parcial_sale_130_y_cierra(self):
+        cliente = mongomock.MongoClient()
+        errores = StringIO()
+
+        def interrumpir(db, carpeta):
+            db.ubicaciones.insert_one({'_id': 'sector'})
+            raise KeyboardInterrupt
+
+        with patch.object(subrutinas, 'conectar', return_value=cliente), patch.object(
+            cliente, 'close', wraps=cliente.close
+        ) as cerrar, patch.object(
+            subrutinas, 'cargar_datos_iniciales', side_effect=interrumpir
+        ), redirect_stderr(errores):
+            with self.assertRaises(SystemExit) as salida:
+                self.ejecutar('carga_datos', [], ['--base', 'interrumpida'])
+        self.assertEqual(salida.exception.code, 130)
+        self.assertIn('carga parcial', errores.getvalue())
+        self.assertEqual(cliente.interrumpida.ubicaciones.count_documents({}), 1)
+        cerrar.assert_called_once_with()
+
     def test_ambos_entrypoints_muestran_el_mismo_submenu_y_cierran_la_conexion(self):
-        conexion = Mock()
-        conexion.rcofa = mongomock.MongoClient().rcofa
-        conexion.rcofa.avistamientos.insert_one({
+        db = mongomock.MongoClient().rcofa
+        db.avistamientos.insert_one({
             'codigo_reporte': 'LARGO', 'duracion_seg': 201, 'ubicacion': {'localidad': 'Chira'},
         })
+        conexion = MagicMock(**{'__getitem__.return_value': db})
         with patch.object(subrutinas, 'conectar', return_value=conexion) as conectar:
             directa = self.ejecutar('consultas_fenomenos', ['4', '0'])
             principal = self.ejecutar('main', ['4', '4', '0', '0'])
@@ -121,7 +174,7 @@ class ConsultasEntrypointsTest(unittest.TestCase):
         self.assertEqual(conexion.close.call_args_list, [call(), call()])
 
     def test_fallo_de_conexion_avisa_y_main_permite_reintentar(self):
-        conexion = Mock()
+        conexion = MagicMock()
         with patch.object(subrutinas, 'conectar', side_effect=[ConnectionFailure(), conexion]) as conectar:
             salida = self.ejecutar('main', ['4', '4', '0', '0'])
         self.assertIn('No se pudo conectar', salida)
@@ -129,7 +182,7 @@ class ConsultasEntrypointsTest(unittest.TestCase):
         conexion.close.assert_called_once_with()
 
     def test_perdida_de_conexion_en_una_consulta_cierra_y_vuelve_al_menu(self):
-        conexion = Mock()
+        conexion = MagicMock()
         with patch.object(subrutinas, 'conectar', return_value=conexion), patch.object(
             subrutinas, 'consultar_reporte_completo', side_effect=ConnectionFailure()
         ):
@@ -142,14 +195,14 @@ class ConsultasEntrypointsTest(unittest.TestCase):
         for modulo, prefijo in [('main', ['4']), ('consultas_fenomenos', [])]:
             for interrupcion in (EOFError, KeyboardInterrupt):
                 with self.subTest(modulo=modulo, interrupcion=interrupcion):
-                    conexion = Mock()
+                    conexion = MagicMock()
                     with patch.object(subrutinas, 'conectar', return_value=conexion):
                         salida = self.ejecutar(modulo, prefijo + ['1', interrupcion])
                     self.assertEqual(salida.count('Saliendo.'), 1)
                     conexion.close.assert_called_once_with()
 
     def test_fallo_inesperado_se_propaga_y_cierra_la_conexion(self):
-        conexion = Mock()
+        conexion = MagicMock()
         with patch.object(subrutinas, 'conectar', return_value=conexion), patch.object(
             subrutinas, 'consultar_reporte_completo', side_effect=RuntimeError('Fallo inesperado')
         ):
@@ -164,7 +217,7 @@ class ConsultasEntrypointsTest(unittest.TestCase):
                 ('consultar_rango_fechas', ['2', '2026-10-01 12:00:00', '2026-10-01 13:00:00']),
             ]:
                 with self.subTest(modulo=modulo, operacion=operacion):
-                    conexion = Mock()
+                    conexion = MagicMock()
                     error = ValueError('Fallo inesperado de la operación')
                     with patch.object(subrutinas, 'conectar', return_value=conexion), patch.object(
                         subrutinas, operacion, side_effect=error
