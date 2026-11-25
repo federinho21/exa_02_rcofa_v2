@@ -4,6 +4,8 @@ import re
 from datetime import datetime
 
 import pymongo
+import csv
+from pathlib import Path
 
 
 COLECCIONES = ('ubicaciones', 'categorias_fenomeno', 'observadores', 'avistamientos')
@@ -278,3 +280,62 @@ def clasificar_tipo_zona(provincia, canton, poblado):
     if canton in MONTANOSOS:
         return "Montañosa"
     return "Urbana"
+
+def leer_ubicaciones_csv(ruta_csv):
+    ruta = Path(ruta_csv)
+    try:
+        contenido = ruta.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        contenido = ruta.read_text(encoding="latin-1")
+
+    if not contenido.strip():
+        raise ValueError("El CSV está vacío")
+
+    campos = {
+        "_id": ("_id", "id", "codigo", "id_sector", "codigo_sector", "cod_sector", "dta"),
+        "provincia": ("provincia", "nom_provincia"),
+        "canton": ("canton", "nom_canton"),
+        "distrito": ("distrito", "nom_distrito"),
+        "poblado": ("poblado", "localidad", "nom_poblado"),
+    }
+
+    lineas = contenido.splitlines(keepends=True)
+    encabezado = next(linea for linea in lineas if linea.strip())
+    delimitador = csv.Sniffer().sniff(encabezado, delimiters=",;\t|").delimiter
+    lector = csv.DictReader(
+        (linea for linea in lineas if linea.strip()), delimiter=delimitador
+    )
+    lector.fieldnames = [
+        normalizar_texto(nombre).replace(" ", "_") for nombre in lector.fieldnames
+    ]
+
+    columnas = {}
+    for campo, nombres in campos.items():
+        columna = next((nombre for nombre in nombres if nombre in lector.fieldnames), None)
+        if columna is None:
+            raise ValueError(f"Falta una columna para {campo} en el CSV")
+        columnas[campo] = columna
+
+    documentos = []
+    codigos = set()
+    for fila in lector:
+        doc = {
+            campo: (fila[columna] or "").strip()
+            for campo, columna in columnas.items()
+        }
+        if not all(doc.values()):
+            raise ValueError(f"Hay campos vacíos cerca de la línea {lector.line_num}")
+
+        codigo = doc["_id"]
+        if codigo in codigos:
+            raise ValueError(f"Código de localidad repetido: {codigo}")
+        codigos.add(codigo)
+
+        doc["tipo_zona"] = clasificar_tipo_zona(
+            doc["provincia"], doc["canton"], doc["poblado"]
+        )
+        documentos.append(doc)
+
+    if not documentos:
+        raise ValueError("El CSV no contiene localidades")
+    return documentos
