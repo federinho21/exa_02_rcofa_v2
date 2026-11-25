@@ -235,3 +235,46 @@ def consultar_reporte_completo(db):
                       'alias_observador': '$observador.alias_o_estacion'}},
         {'$sort': {'codigo_reporte': 1}}
     ]))
+CANTONES_COSTEROS = {
+    "Puntarenas", "Esparza", "Montes de Oro", "Osa", "Quepos", "Golfito",
+    "Parrita", "Corredores", "Garabito", "Liberia", "Nicoya", "Santa Cruz",
+    "Bagaces", "Carrillo", "Cañas", "Abangares", "Nandayure", "La Cruz",
+    "Hojancha", "Limón", "Pococí", "Siquirres", "Talamanca", "Matina", "Guácimo",
+}
+
+CANTONES_MONTANOSOS = {
+    "Tarrazú", "Aserrí", "Mora", "Acosta", "Turrubares", "Dota",
+    "Pérez Zeledón", "León Cortés", "Puriscal", "San Ramón", "Zarcero",
+    "Poás", "Valverde Vega", "Paraíso", "Jiménez", "Turrialba", "Alvarado",
+    "Oreamuno", "El Guarco", "Barva", "Santa Bárbara", "San Rafael",
+    "San Isidro", "Tilarán", "Buenos Aires", "Coto Brus",
+}
+
+POBLADOS_INSULARES = {
+    "Isla del Coco", "Isla Chira", "Isla Venado", "Isla Caballo",
+    "Isla San Lucas", "Isla Tortuga", "Isla Cedros", "Isla Jesucita",
+    "Isla Berrugate",
+}
+
+
+def normalizar_texto(texto):
+    letras = unicodedata.normalize("NFKD", texto.casefold())
+    limpio = "".join(letra for letra in letras if not unicodedata.combining(letra))
+    return " ".join(limpio.split())
+
+
+COSTEROS = {normalizar_texto(canton) for canton in CANTONES_COSTEROS}
+MONTANOSOS = {normalizar_texto(canton) for canton in CANTONES_MONTANOSOS}
+INSULARES = {normalizar_texto(poblado) for poblado in POBLADOS_INSULARES}
+
+
+def clasificar_tipo_zona(provincia, canton, poblado):
+    canton = normalizar_texto(canton)
+
+    if normalizar_texto(poblado) in INSULARES:
+        return "Insular"
+    if canton in COSTEROS:
+        return "Costera"
+    if canton in MONTANOSOS:
+        return "Montañosa"
+    return "Urbana"
