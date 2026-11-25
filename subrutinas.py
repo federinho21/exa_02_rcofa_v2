@@ -277,3 +277,105 @@ def imprimir_reportes(reportes: list[dict]) -> None:
             if campo in reporte:
                 partes.append(f"{etiqueta}: {reporte[campo]}")
         print(" | ".join(partes))
+
+
+# Parte 2: menú sin acceso a la base de datos.
+def _leer_argumentos_catalogo(leer, catalogo, operacion):
+    try:
+        identificador = int(leer('ID: '))
+    except ValueError:
+        raise ValueError('ID debe ser un entero') from None
+    if operacion == '4':
+        return [identificador]
+
+    campos = ('nombre', 'descripcion') if catalogo == 'categoria' else ('alias_o_estacion', 'rol')
+    argumentos = [identificador]
+    for campo in campos:
+        valor = leer(f'{campo}: ').strip()
+        validar_texto(valor, campo)
+        argumentos.append(valor)
+    if catalogo == 'observador':
+        try:
+            confianza = float(leer('Confiabilidad (0 a 1): '))
+        except ValueError:
+            raise ValueError('Confiabilidad debe ser un número entre 0 y 1') from None
+        if not 0 <= confianza <= 1:
+            raise ValueError('Confiabilidad debe ser un número entre 0 y 1')
+        argumentos.append(confianza)
+    return argumentos
+
+
+def _menu_catalogo(catalogo, acciones, leer, escribir):
+    plural = {'categoria': 'categorias', 'observador': 'observadores'}[catalogo]
+    opciones = {
+        '1': f'listar_{plural}',
+        '2': f'insertar_{catalogo}',
+        '3': f'modificar_{catalogo}',
+        '4': f'borrar_{catalogo}',
+    }
+    titulo = 'Categorías' if catalogo == 'categoria' else 'Observadores'
+    while True:
+        escribir(f'\n{titulo}\n1. Listar\n2. Crear\n3. Modificar\n4. Borrar\n0. Volver')
+        opcion = leer('Opción: ').strip()
+        if opcion == '0':
+            return
+        clave = opciones.get(opcion)
+        if clave is None:
+            escribir('Opción inválida.')
+            continue
+        accion = acciones.get(clave)
+        if accion is None:
+            escribir(f'Acción no conectada: {clave}.')
+            continue
+
+        try:
+            if opcion == '1':
+                filas = accion()
+                if filas is not None:
+                    for fila in filas:
+                        escribir(str(fila))
+                    if not filas:
+                        escribir('No hay registros.')
+                continue
+            argumentos = _leer_argumentos_catalogo(leer, catalogo, opcion)
+            if opcion == '4':
+                confirmacion = leer(f'¿Borrar el ID {argumentos[0]}? Escriba sí para confirmar: ')
+                if confirmacion.strip().casefold() not in ('sí', 'si'):
+                    escribir('Borrado cancelado.')
+                    continue
+            accion(*argumentos)
+        except ValueError as error:
+            escribir(str(error))
+
+
+def menu_principal(acciones=None, *, leer=input, escribir=print):
+    """Despacha callbacks por nombre, con las firmas CRUD de Ihann sin `db`.
+
+    `cargar` y `consultar` se llaman sin argumentos y manejan su propio flujo.
+    Los callbacks `listar_*` pueden devolver una lista para mostrar o None.
+    """
+    if acciones is None:
+        acciones = {}
+    try:
+        while True:
+            escribir('\nRCOFA\n1. Cargar datos\n2. Categorías\n3. Observadores\n4. Consultas\n0. Salir')
+            opcion = leer('Opción: ').strip()
+            if opcion == '0':
+                return
+            if opcion in ('2', '3'):
+                catalogo = 'categoria' if opcion == '2' else 'observador'
+                _menu_catalogo(catalogo, acciones, leer, escribir)
+            elif opcion in ('1', '4'):
+                clave = 'cargar' if opcion == '1' else 'consultar'
+                accion = acciones.get(clave)
+                if accion is None:
+                    escribir(f'Acción no conectada: {clave}.')
+                else:
+                    try:
+                        accion()
+                    except ValueError as error:
+                        escribir(str(error))
+            else:
+                escribir('Opción inválida.')
+    except (EOFError, KeyboardInterrupt):
+        escribir('\nSaliendo.')
