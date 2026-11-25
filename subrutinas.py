@@ -235,3 +235,45 @@ def consultar_reporte_completo(db):
                       'alias_observador': '$observador.alias_o_estacion'}},
         {'$sort': {'codigo_reporte': 1}}
     ]))
+
+
+MESES = (
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+)
+
+
+def formatear_fecha_es(fecha: datetime) -> str:
+    mes = MESES[fecha.month - 1]
+    return f"{fecha.day:02d} de {mes} de {fecha.year} a las {fecha:%H:%M:%S}"
+
+
+def filtrar_duracion_mayor_a(reportes: list[dict]) -> list[dict]:
+    return [reporte for reporte in reportes if reporte.get("duracion_seg", 0) > 200]
+
+
+def imprimir_reportes(reportes: list[dict]) -> None:
+    if not reportes:
+        print("Sin resultados.")
+        return
+
+    for reporte in reportes:
+        partes = [reporte["codigo_reporte"]]
+        if "fecha_evento" in reporte:
+            partes.append(formatear_fecha_es(reporte["fecha_evento"]))
+        if "duracion_seg" in reporte:
+            partes.append(f'{reporte["duracion_seg"]} s')
+
+        localidad = reporte.get("localidad")
+        if localidad is None:
+            localidad = reporte.get("ubicacion", {}).get("localidad")
+        if localidad:
+            partes.append(f"Localidad: {localidad}")
+
+        for campo, etiqueta in (
+            ("nombre_fenomeno", "Fenómeno"),
+            ("alias_observador", "Observador"),
+        ):
+            if campo in reporte:
+                partes.append(f"{etiqueta}: {reporte[campo]}")
+        print(" | ".join(partes))
