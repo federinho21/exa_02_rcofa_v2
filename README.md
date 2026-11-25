@@ -90,7 +90,7 @@ sobre una base poblada; revisar el error y usar una base de prueba para ensayos.
 ## Comprobaciones
 
 `python carga_datos.py` verifica conexión y creación de colecciones.
-`python consultas_fenomenos.py` muestra el cruce de los datos ya cargados.
+`python consultas_fenomenos.py` y la opción 4 de `python main.py` abren el mismo menú de consultas sobre los datos ya cargados.
 Las pruebas automáticas requieren `mongomock` y se ejecutan con:
 
 ```text

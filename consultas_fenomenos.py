@@ -5,16 +5,12 @@ from subrutinas import (
     consultar_avistamientos,
     consultar_rango_fechas,
     consultar_reporte_completo,
+    ejecutar_consultas,
 )
 
 
 if __name__ == '__main__':
-    conex = conectar()
     try:
-        db = conex.rcofa
-        for reporte in consultar_reporte_completo(db):
-            print('Reporte: {0} | Fenómeno: {1} | Observador: {2} | Localidad: {3}'.format(
-                reporte['codigo_reporte'], reporte.get('nombre_fenomeno', 'Sin categoría'),
-                reporte.get('alias_observador', 'Sin observador'), reporte['localidad']))
-    finally:
-        conex.close()
+        ejecutar_consultas()
+    except (EOFError, KeyboardInterrupt):
+        print('\nSaliendo.')

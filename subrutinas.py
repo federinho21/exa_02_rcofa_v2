@@ -279,12 +279,83 @@ def imprimir_reportes(reportes: list[dict]) -> None:
         print(" | ".join(partes))
 
 
-# Parte 2: menú sin acceso a la base de datos.
-def _leer_argumentos_catalogo(leer, catalogo, operacion):
+def _leer_id(leer, mensaje='ID: '):
     try:
-        identificador = int(leer('ID: '))
+        identificador = int(leer(mensaje))
     except ValueError:
         raise ValueError('ID debe ser un entero') from None
+    if not -(2**63) <= identificador < 2**63:
+        raise ValueError('ID fuera del rango de enteros BSON de 64 bits')
+    return identificador
+
+
+def menu_consultas(db, *, leer):
+    """Ejecuta consultas sobre una base ya abierta, sin modificarla."""
+    campos = {'1': 'provincia', '2': 'canton', '3': 'id_categoria'}
+    while True:
+        print('\nConsultas\n1. Por provincia, cantón o categoría\n2. Rango de fechas'
+              '\n3. Reporte cruzado\n4. Duración mayor a 200 s (filtro Python)\n0. Volver')
+        opcion = leer('Opción: ').strip()
+        if opcion == '0':
+            return
+        try:
+            if opcion == '1':
+                campo = campos.get(leer('1. Provincia / 2. Cantón / 3. Categoría: ').strip())
+                if campo is None:
+                    raise ValueError('Opción inválida.')
+                if campo == 'id_categoria':
+                    valor = _leer_id(leer, 'ID de categoría: ')
+                else:
+                    etiqueta = 'Provincia' if campo == 'provincia' else 'Cantón'
+                    valor = leer(f'{etiqueta}: ').strip()
+                    validar_texto(valor, etiqueta)
+            elif opcion == '2':
+                inicio = leer('Fecha inicial (YYYY-MM-DD HH:MM:SS): ').strip()
+                fin = leer('Fecha final (YYYY-MM-DD HH:MM:SS): ').strip()
+                inicio, fin = convertir_fecha(inicio), convertir_fecha(fin)
+                if inicio > fin:
+                    raise ValueError('La fecha inicial no puede ser posterior a la final')
+            elif opcion not in ('3', '4'):
+                raise ValueError('Opción inválida.')
+        except ValueError as error:
+            print(str(error))
+            continue
+
+        if opcion == '1':
+            reportes = consultar_avistamientos(db, **{campo: valor})
+        elif opcion == '2':
+            reportes = consultar_rango_fechas(db, inicio, fin)
+        else:
+            reportes = consultar_reporte_completo(db)
+            if opcion == '4':
+                print('Duración mayor a 200 s: filtro Python sobre todo el reporte cruzado.')
+                reportes = filtrar_duracion_mayor_a(reportes)
+        imprimir_reportes(reportes)
+
+
+def ejecutar_consultas():
+    """Abre la conexión solo al entrar y la cierra al salir del submenú."""
+    try:
+        try:
+            conexion = conectar()
+        except pymongo.errors.PyMongoError:
+            print('No se pudo conectar a MongoDB para consultar.')
+            return
+
+        try:
+            menu_consultas(conexion.rcofa, leer=input)
+        except pymongo.errors.ConnectionFailure:
+            print('Se perdió la conexión a MongoDB durante la consulta.')
+        finally:
+            conexion.close()
+    except ValueError as error:
+        # El menú principal recupera ValueError de callbacks como errores de entrada.
+        raise RuntimeError('Error inesperado en consultas') from error
+
+
+# Parte 2: menú sin acceso a la base de datos.
+def _leer_argumentos_catalogo(leer, catalogo, operacion):
+    identificador = _leer_id(leer)
     if operacion == '4':
         return [identificador]
 
