@@ -1,0 +1,13 @@
+{
+  "categorias_fenomeno": [
+    {"_id": 1, "nombre": "Luminaria estacionaria", "descripcion": "Luz que permanece en una posición aparente fija."},
+    {"_id": 2, "nombre": "Eco radar no identificado", "descripcion": "Señal de radar cuyo origen no se ha identificado."},
+    {"_id": 3, "nombre": "Estela luminosa", "descripcion": "Rastro luminoso observado en el cielo."},
+    {"_id": 4, "nombre": "Objeto Volador NO Identificado", "descripcion": "Objeto aéreo de naturaleza no determinada."}
+  ],
+  "observadores": [
+    {"_id": 1, "alias_o_estacion": "Testigo de prueba", "rol": "Testigo ciudadano", "indice_confiabilidad": 0.6},
+    {"_id": 2, "alias_o_estacion": "Radar de prueba", "rol": "Operador radar", "indice_confiabilidad": 0.9},
+    {"_id": 3, "alias_o_estacion": "Estación de prueba", "rol": "Estación meteorológica", "indice_confiabilidad": 0.95}
+  ]
+}

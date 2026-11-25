@@ -1,0 +1,6 @@
+[
+  {"_id": "REP-00000001", "fecha_evento": "2026-10-01 12:00:00", "duracion_seg": 200, "id_categoria": 1, "id_observador": 1, "id_sector": "00001", "testimonio": "Ejemplo ficticio: luz estacionaria."},
+  {"_id": "REP-00000002", "fecha_evento": "2026-10-01 13:00:00", "duracion_seg": 201, "id_categoria": 2, "id_observador": 2, "id_sector": "00002", "radar": {"frecuencia_mhz": 1200.0}},
+  {"_id": "REP-00000003", "fecha_evento": "2026-10-01 11:00:00", "duracion_seg": 201, "id_categoria": 3, "id_observador": 3, "id_sector": "00003", "telemetria_entorno": {"visibilidad_km": 12.5, "nubosidad_pct": 20, "viento_nudos": 8.0}},
+  {"_id": "REP-00000004", "fecha_evento": "2026-10-02 09:30:00", "duracion_seg": 90, "id_categoria": 4, "id_observador": 1, "id_sector": "00004"}
+]
